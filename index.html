@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arbetsschema - Skapad av Johannes Abrahamsson</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-50 text-slate-800 min-h-screen pb-12">
+
+    <div id="app" class="max-w-4xl mx-auto px-4 pt-8">
+
+        <!-- Header -->
+        <header class="bg-white border border-gray-200 rounded-xl p-6 mb-6 shadow-sm">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+                <div>
+                    <h1 class="text-xl font-bold text-slate-900">Arbetsschema</h1>
+                    <p class="text-slate-500 text-sm">Rullande 28-dagars nattcykel</p>
+                  <p class="font-bold text-slate-500 text-sm">Skapad av Johannes Abrahamsson</p>
+                </div>
+                
+                <div class="flex bg-gray-100 p-1 rounded-lg">
+                    <button @click="selectedSide = 'gul'" 
+                            :class="['px-4 py-2 rounded-md font-semibold text-sm transition', selectedSide === 'gul' ? 'bg-amber-500 text-white shadow' : 'text-slate-600 hover:text-slate-900']">
+                        Gul Sida
+                    </button>
+                    <button @click="selectedSide = 'vit'" 
+                            :class="['px-4 py-2 rounded-md font-semibold text-sm transition', selectedSide === 'vit' ? 'bg-blue-600 text-white shadow' : 'text-slate-600 hover:text-slate-900']">
+                        Vit Sida
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2 mt-6 pt-6 border-t border-gray-100">
+                <button @click="prevMonth" class="p-2 hover:bg-gray-100 rounded-lg text-slate-600">&larr;</button>
+                <select v-model="currentMonth" class="bg-gray-50 text-slate-900 px-3 py-2 rounded-lg border border-gray-200 text-sm font-medium">
+                    <option v-for="(name, index) in monthNames" :key="index" :value="index">{{ name }}</option>
+                </select>
+                <select v-model="currentYear" class="bg-gray-50 text-slate-900 px-3 py-2 rounded-lg border border-gray-200 text-sm font-medium">
+                    <option v-for="y in yearOptions" :key="y" :value="y">{{ y }}</option>
+                </select>
+                <button @click="nextMonth" class="p-2 hover:bg-gray-100 rounded-lg text-slate-600">&rarr;</button>
+                <button @click="goToToday" class="ml-auto px-4 py-2 bg-white border border-gray-200 hover:bg-gray-50 text-slate-700 text-sm font-medium rounded-lg shadow-sm">Idag</button>
+            </div>
+        </header>
+
+        <!-- Stats & Copy -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div class="bg-white border border-gray-200 p-4 rounded-xl shadow-sm flex items-center justify-between">
+                <span class="text-slate-500 text-sm font-medium">Arbetspass</span>
+                <span class="text-xl font-bold text-slate-900">{{ monthStats.workDays }}</span>
+            </div>
+            <div class="bg-white border border-gray-200 p-4 rounded-xl shadow-sm flex items-center justify-between">
+                <span class="text-slate-500 text-sm font-medium">Lediga dagar</span>
+                <span class="text-xl font-bold text-slate-900">{{ monthStats.offDays }}</span>
+            </div>
+            <div class="bg-white border border-gray-200 p-4 rounded-xl shadow-sm flex flex-col gap-2">
+                <div class="flex bg-gray-100 p-1 rounded-lg">
+                    <button @click="copyType = 'offDays'" :class="['flex-1 py-1 text-xs font-semibold rounded-md transition', copyType === 'offDays' ? 'bg-white shadow text-slate-900' : 'text-slate-500']">Ledigt</button>
+                    <button @click="copyType = 'workDays'" :class="['flex-1 py-1 text-xs font-semibold rounded-md transition', copyType === 'workDays' ? 'bg-white shadow text-slate-900' : 'text-slate-500']">Pass</button>
+                </div>
+                <button @click="copyToClipboard" class="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg text-sm transition">
+                    {{ copySuccess ? '✓ Kopierat!' : 'Kopiera' }}
+                </button>
+            </div>
+        </div>
+
+        <!-- Calendar Grid -->
+        <div class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+            <div class="grid grid-cols-[80px_repeat(7,1fr)] border-b border-gray-200 bg-gray-50">
+                <div class="py-3 text-center text-xs font-bold text-slate-500 uppercase">V</div>
+                <div v-for="day in weekDays" :key="day" class="py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider">{{ day }}</div>
+            </div>
+
+            <div class="grid grid-cols-[80px_repeat(7,1fr)]">
+                <template v-for="(week, index) in calendarWeeks" :key="index">
+                    <!-- Veckonummer -->
+                    <div class="flex items-center justify-center border-b border-r border-gray-100 bg-gray-50/50 text-xs font-bold text-slate-400">
+                        {{ week.weekNum }}
+                    </div>
+                    <!-- Dagar -->
+                    <div v-for="item in week.days" :key="item.id" class="min-h-[100px] border-b border-r border-gray-100 p-2 transition-colors hover:bg-gray-50 relative" :class="{'bg-gray-50/30': item.isPadding}">
+                        <template v-if="!item.isPadding">
+                            <span :class="['text-xs font-bold', item.isRedDay ? 'text-red-500' : 'text-slate-700', item.isToday ? 'bg-blue-600 text-white w-6 h-6 flex items-center justify-center rounded-full' : '']">
+                                {{ item.dayNumber }}
+                            </span>
+                            
+                            <!-- Helgdagsnamn på lediga dagar -->
+                            <div v-if="!item.isWork && item.holidayName" class="mt-1 text-[9px] font-bold text-red-500 uppercase leading-tight truncate" :title="item.holidayName">
+                                {{ item.holidayName }}
+                            </div>
+
+                            <!-- Arbetspass -->
+                            <div v-if="item.isWork" class="mt-2">
+                                <div :class="['rounded-md p-1.5 text-[10px] font-bold shadow-sm', selectedSide === 'gul' ? 'bg-amber-500' : 'bg-blue-500']">
+                                    <!-- Röd text i vit skylt om det är helgdag/storhelg -->
+                                    <div v-if="item.holidayName" class="bg-white text-red-600 px-1 py-0.5 rounded text-[9px] font-extrabold uppercase truncate shadow-sm mb-1 text-center" :title="item.holidayName">
+                                        {{ item.holidayName }}
+                                    </div>
+                                    <div v-else class="text-[9px] text-white opacity-90 uppercase truncate">
+                                        Pass
+                                    </div>
+                                    
+                                    <!-- Klockslag: Svart text vid 20:00-06:00 (helgpass) -->
+                                    <div :class="['mt-0.5 font-mono text-[10px]', item.isWeekendShift ? 'text-slate-950 font-bold' : 'text-white font-medium']">
+                                        {{ item.shiftTime }}
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed } = Vue;
+
+        createApp({
+            setup() {
+                const today = new Date();
+                const currentYear = ref(today.getFullYear());
+                const currentMonth = ref(today.getMonth());
+                const selectedSide = ref('gul'); 
+                const copyType = ref('offDays'); 
+                
+                const monthNames = ['Januari', 'Februari', 'Mars', 'April', 'Maj', 'Juni', 'Juli', 'Augusti', 'September', 'Oktober', 'November', 'December'];
+                const weekDays = ['Mån', 'Tis', 'Ons', 'Tor', 'Fre', 'Lör', 'Sön'];
+                
+                const yearOptions = computed(() => Array.from({length: 50}, (_, i) => 2025 + i));
+
+                const prevMonth = () => { currentMonth.value === 0 ? (currentMonth.value = 11, currentYear.value--) : currentMonth.value--; };
+                const nextMonth = () => { currentMonth.value === 11 ? (currentMonth.value = 0, currentYear.value++) : currentMonth.value++; };
+                const goToToday = () => { currentYear.value = today.getFullYear(); currentMonth.value = today.getMonth(); };
+
+                // ISO Veckonummer
+                const getWeekNumber = (date) => {
+                    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+                    d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+                    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+                    return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+                };
+
+                // Påskberäkning (Meeus/Jones/Butcher-algoritm)
+                const getEaster = (year) => {
+                    const f = Math.floor,
+                        G = year % 19,
+                        C = f(year / 100),
+                        H = (C - f(C / 4) - f((8 * C + 13) / 25) + 19 * G + 15) % 30,
+                        I = H - f(H / 28) * (1 - f(29 / (H + 1)) * f((21 - G) / 11)),
+                        J = (year + f(year / 4) + I + 2 - C + f(C / 4)) % 7,
+                        L = I - J,
+                        month = 3 + f((L + 40) / 44),
+                        day = L + 28 - 31 * f(month / 4);
+                    return new Date(year, month - 1, day);
+                };
+
+                // Identifierar röda dagar och helgdagar enligt kollektivavtalet
+                const getHolidayInfo = (date) => {
+                    const y = date.getFullYear();
+                    const m = date.getMonth();
+                    const d = date.getDate();
+                    const dayOfWeek = date.getDay(); // 0=Sön, 1=Mån...
+
+                    // Fasta helgdagar & storhelgsdagar
+                    if (m === 0 && d === 1) return { isRed: true, name: 'NYÅRSDAGEN' };
+                    if (m === 0 && d === 6) return { isRed: true, name: 'TRETTONDAGEN' };
+                    if (m === 4 && d === 1) return { isRed: true, name: '1 MAJ' };
+                    if (m === 5 && d === 6) return { isRed: true, name: 'NATIONALDAGEN' };
+                    if (m === 11 && d === 24) return { isRed: true, name: 'JULAFTON' };
+                    if (m === 11 && d === 25) return { isRed: true, name: 'JULDAGEN' };
+                    if (m === 11 && d === 26) return { isRed: true, name: 'ANNANDAG JUL' };
+                    if (m === 11 && d === 31) return { isRed: true, name: 'NYÅRSAFTON' };
+
+                    // Påskrelaterade dagar
+                    const easter = getEaster(y);
+                    const diffDays = Math.round((new Date(y, m, d) - easter) / (1000 * 60 * 60 * 24));
+
+                    if (diffDays === -3) return { isRed: true, name: 'SKÄRTORSDAG' };
+                    if (diffDays === -2) return { isRed: true, name: 'LÅNGFREDAG' };
+                    if (diffDays === -1) return { isRed: true, name: 'PÅSKAFTOM' };
+                    if (diffDays === 0) return { isRed: true, name: 'PÅSKDAGEM' };
+                    if (diffDays === 1) return { isRed: true, name: 'ANNANDAG PÅSK' };
+                    if (diffDays === 39) return { isRed: true, name: 'KRISTI HIMMELSFÄRD' };
+                    if (diffDays === 48) return { isRed: true, name: 'PINGSTAFTOM' };
+                    if (diffDays === 49) return { isRed: true, name: 'PINGSTDAGEN' };
+                    if (diffDays === 50) return { isRed: true, name: 'ANNANDAG PINGST' };
+
+                    // Midsommar (Midsommarafton är fredag mellan 19 och 25 juni)
+                    if (m === 5 && d >= 19 && d <= 25 && dayOfWeek === 5) return { isRed: true, name: 'MIDSOMMARAFTON' };
+                    if (m === 5 && d >= 20 && d <= 26 && dayOfWeek === 6) return { isRed: true, name: 'MIDSOMMARDAGEN' };
+                    if (m === 5 && d >= 21 && d <= 27 && dayOfWeek === 0) return { isRed: true, name: 'DAGEN E. MIDSOMMAR' };
+
+                    // Alla helgons dag (Lördag mellan 31 okt och 6 nov)
+                    if (((m === 9 && d === 31) || (m === 10 && d <= 6)) && dayOfWeek === 6) {
+                        return { isRed: true, name: 'ALLA HELGONS DAG' };
+                    }
+
+                    // Söndag är alltid röd dag
+                    if (dayOfWeek === 0) return { isRed: true, name: null };
+
+                    return { isRed: false, name: null };
+                };
+
+                const getShiftTime = (date) => {
+                    const d = date.getDay();
+                    return (d === 5 || d === 6) ? "20:00-06:00" : "19:00-05:00";
+                };
+
+                const isWorkDay = (date) => {
+                    const anchor = new Date(2026, 0, 7);
+                    const diffDays = Math.round((new Date(date.getFullYear(), date.getMonth(), date.getDate()) - anchor) / (1000 * 60 * 60 * 24));
+                    const cycleIndex = ((diffDays % 28) + 28) % 28;
+                    const isWorkOriginal = (cycleIndex >= 0 && cycleIndex <= 4) || (cycleIndex >= 9 && cycleIndex <= 13) || (cycleIndex >= 19 && cycleIndex <= 22);
+                    return selectedSide.value === 'gul' ? !isWorkOriginal : isWorkOriginal;
+                };
+
+                const calendarWeeks = computed(() => {
+                    const year = currentYear.value, month = currentMonth.value;
+                    const firstDay = new Date(year, month, 1).getDay();
+                    const padding = firstDay === 0 ? 6 : firstDay - 1;
+                    
+                    let allDays = [];
+                    for(let i=0; i<padding; i++) allDays.push({ isPadding: true });
+                    
+                    const lastDate = new Date(year, month + 1, 0).getDate();
+                    for (let d = 1; d <= lastDate; d++) {
+                        const date = new Date(year, month, d);
+                        const holidayInfo = getHolidayInfo(date);
+                        const shiftTime = getShiftTime(date);
+                        
+                        allDays.push({ 
+                            id: `day-${d}`, 
+                            dayNumber: d, 
+                            isWork: isWorkDay(date), 
+                            isToday: date.toDateString() === today.toDateString(), 
+                            isRedDay: holidayInfo.isRed,
+                            holidayName: holidayInfo.name,
+                            shiftTime: shiftTime,
+                            isWeekendShift: shiftTime === "20:00-06:00",
+                            isPadding: false,
+                            date: date
+                        });
+                    }
+
+                    let weeks = [];
+                    for (let i = 0; i < allDays.length; i += 7) {
+                        const weekChunk = allDays.slice(i, i + 7);
+                        const firstRealDay = weekChunk.find(d => !d.isPadding) || { date: new Date(year, month, 1) };
+                        weeks.push({
+                            weekNum: getWeekNumber(firstRealDay.date),
+                            days: weekChunk
+                        });
+                    }
+                    return weeks;
+                });
+
+                const monthStats = computed(() => {
+                    const allDays = calendarWeeks.value.flatMap(w => w.days);
+                    const workDays = allDays.filter(d => !d.isPadding && d.isWork).length;
+                    return { workDays, offDays: allDays.filter(d => !d.isPadding).length - workDays };
+                });
+
+                const formattedText = computed(() => {
+                    let blocks = [], currentBlock = [];
+                    const isOffDays = copyType.value === 'offDays';
+                    const allDays = calendarWeeks.value.flatMap(w => w.days);
+                    
+                    allDays.filter(d => !d.isPadding).forEach(d => {
+                        const matches = isOffDays ? !d.isWork : d.isWork;
+                        if (matches) currentBlock.push(String(d.dayNumber).padStart(2, '0'));
+                        else if (currentBlock.length > 0) { blocks.push(currentBlock.join(' ')); currentBlock = []; }
+                    });
+                    if (currentBlock.length > 0) blocks.push(currentBlock.join(' '));
+
+                    const header = isOffDays 
+                        ? `Hejsan, här är mina tillgängliga dagar vid ${monthNames[currentMonth.value].toLowerCase()}.\n\n`
+                        : `Arbetspass ${monthNames[currentMonth.value].toLowerCase()}\n\n`;
+
+                    return header + blocks.join('  \n');
+                });
+
+                const copySuccess = ref(false);
+                const copyToClipboard = () => {
+                    navigator.clipboard.writeText(formattedText.value).then(() => {
+                        copySuccess.value = true;
+                        setTimeout(() => copySuccess.value = false, 2500);
+                    });
+                };
+
+                return { currentYear, currentMonth, selectedSide, copyType, monthNames, weekDays, yearOptions, calendarWeeks, monthStats, prevMonth, nextMonth, goToToday, copyToClipboard, copySuccess };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
